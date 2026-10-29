@@ -116,6 +116,25 @@ def patch_payload_name(splash):
     )
 
 
+def drop_stale_script_cache(target):
+    """Drop Cobalt's compiled-script cache.
+
+    The cache holds pre-compiled copies of the very scripts this script
+    rewrites, so a stale entry could win over the patched source. Entries are
+    regenerated on the next boot; the directory itself is kept.
+    """
+    cache = target / "cache" / "compiled_js"
+    if not cache.is_dir():
+        return "no compiled-script cache"
+
+    removed = 0
+    for entry in sorted(cache.iterdir()):
+        if entry.is_file():
+            entry.unlink()
+            removed += 1
+    return "%d stale compiled script(s) removed" % removed
+
+
 def patch_toast_filter(splash):
     """Silence Y2JB's per-boot comfort toasts, keep real errors."""
     misc = splash / "misc.js"
@@ -199,6 +218,7 @@ def main():
         removed.append(stale.name)
 
     toasts = "kept" if args.keep_toasts else patch_toast_filter(splash)
+    script_cache = drop_stale_script_cache(target)
 
     print("splash dir   : %s" % splash.relative_to(target))
     print(
@@ -211,6 +231,7 @@ def main():
     )
     print("removed      : %s" % (", ".join(removed) if removed else "nothing"))
     print("boot toasts  : %s" % toasts)
+    print("script cache : %s" % script_cache)
     total = sum(f.stat().st_size for f in target.rglob("*") if f.is_file())
     print("tree size    : %d bytes (%.1f MiB)" % (total, total / 1048576))
     print()
