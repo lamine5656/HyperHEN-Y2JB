@@ -1,0 +1,3 @@
+# The download0 tree is a dumped console filesystem: keep every byte exactly as
+# captured (no EOL rewriting, no encoding filters).
+* -text
