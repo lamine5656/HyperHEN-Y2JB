@@ -44,6 +44,48 @@ AUTOLOAD_PATTERNS = (
 SCRIPT_ORDER = ("autoload.js", "main.js")
 # Stage-one artefacts that only exist to reach the Payload Manager.
 REPLACED_FILES = ("ps5-unified-autoloader.elf",)
+ALREADY_JB_MARK = "// hyperhen: already-jailbroken guard"
+ALREADY_JB_ANCHOR = """        log_phase = 'relapse';
+        await load_localscript('Relapse.js');
+        const relapse_success = await window.RELAPSE_PROMISE;
+        if (relapse_success) {
+            log_phase = 'autoload';
+            const autoload_sent = await send_autoload_payload();
+            log_phase = 'quiet';
+            if (autoload_sent) kill_youtube();
+        } else {
+            log_phase = 'quiet';
+        }
+"""
+ALREADY_JB_PATCH = """        // hyperhen: already-jailbroken guard
+        // Returning to the app on an already-jailbroken console used to fall
+        // through to send_autoload_payload(): elfldr on :9021 is gone, the
+        // failure path prints its error screen (with the user agent) and never
+        // calls kill_youtube(), so YouTube stayed open. Report the state and
+        // close the app exactly like a successful launch does.
+        let already_jailbroken = false;
+        if (typeof is_jailbroken === "function") {
+            try { already_jailbroken = is_jailbroken(); } catch (_) { }
+        }
+        if (already_jailbroken) {
+            log_phase = 'quiet';
+            send_notification("Already Jailbroken");
+            try { await new Promise(function (r) { setTimeout(r, 2500); }); } catch (_) { }
+            kill_youtube();
+            return;
+        }
+        log_phase = 'relapse';
+        await load_localscript('Relapse.js');
+        const relapse_success = await window.RELAPSE_PROMISE;
+        if (relapse_success) {
+            log_phase = 'autoload';
+            const autoload_sent = await send_autoload_payload();
+            log_phase = 'quiet';
+            if (autoload_sent) kill_youtube();
+        } else {
+            log_phase = 'quiet';
+        }
+"""
 TOAST_GUARD_MARK = "/* hyperhen: verdict only */"
 TOAST_GUARD = (
     "    " + TOAST_GUARD_MARK + "\n"
@@ -116,6 +158,27 @@ def patch_payload_name(splash):
     )
 
 
+def patch_already_jailbroken(splash):
+    """Close the app when the console is already jailbroken.
+
+    Only the loader generation that drives RELAPSE_PROMISE has this flow; on a
+    newer split autoloader the caller already exits, so the anchor is absent and
+    the patch reports it as not applicable instead of failing.
+    """
+    main_js = splash / "main.js"
+    if not main_js.is_file():
+        return "no main.js, skipped"
+
+    text = read_text(main_js)
+    if ALREADY_JB_MARK in text:
+        return "already patched"
+    if ALREADY_JB_ANCHOR not in text:
+        return "anchor not found (other loader generation), skipped"
+
+    write_text(main_js, text.replace(ALREADY_JB_ANCHOR, ALREADY_JB_PATCH, 1))
+    return "notify + close on an already-jailbroken console"
+
+
 def drop_stale_script_cache(target):
     """Drop Cobalt's compiled-script cache.
 
@@ -171,6 +234,11 @@ def main():
         help="write the patched tree here instead of modifying --download0 in place",
     )
     parser.add_argument(
+        "--icon",
+        type=pathlib.Path,
+        help="PNG staged as icon0.png in the splash dir (YouTube dashboard icon)",
+    )
+    parser.add_argument(
         "--keep-toasts",
         action="store_true",
         help="keep Y2JB's own boot toasts (do not filter them)",
@@ -218,7 +286,18 @@ def main():
         removed.append(stale.name)
 
     toasts = "kept" if args.keep_toasts else patch_toast_filter(splash)
+    already_jb = patch_already_jailbroken(splash)
     script_cache = drop_stale_script_cache(target)
+
+    icon_status = "none provided"
+    if args.icon:
+        icon = args.icon.resolve()
+        if not icon.is_file():
+            fail("%s does not exist" % icon)
+        if icon.read_bytes()[:8] != b"\x89PNG\r\n\x1a\n":
+            fail("%s is not a PNG file" % icon)
+        (splash / "icon0.png").write_bytes(icon.read_bytes())
+        icon_status = "icon0.png (%d bytes) staged" % icon.stat().st_size
 
     print("splash dir   : %s" % splash.relative_to(target))
     print(
@@ -231,6 +310,8 @@ def main():
     )
     print("removed      : %s" % (", ".join(removed) if removed else "nothing"))
     print("boot toasts  : %s" % toasts)
+    print("already-JB   : %s" % already_jb)
+    print("icon         : %s" % icon_status)
     print("script cache : %s" % script_cache)
     total = sum(f.stat().st_size for f in target.rglob("*") if f.is_file())
     print("tree size    : %d bytes (%.1f MiB)" % (total, total / 1048576))

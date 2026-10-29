@@ -9,6 +9,7 @@ Nothing from the HyperHEN source tree lives here. The repository contains only:
 | :--- | :--- |
 | `download0/` | original Y2JB `download0` tree (splash-screen loader, exploit JS, elfldr, kexp, kexp.bin) |
 | `HyperHEN.elf` | the payload to boot |
+| `assets/icon0.png` | app icon staged into the bundle (YouTube dashboard icon) |
 | `tools/y2jb_bundle.py` | rewires the loader and stages the patched tree |
 | `.github/workflows/build.yml` | builds the UFS2 image in a FreeBSD VM and publishes it |
 
@@ -29,7 +30,12 @@ HyperHEN:
    split `autoload.js`),
 3. drops the now unreachable `ps5-unified-autoloader.elf` / `pldmgr_v*.elf`,
 4. silences Y2JB's per-boot comfort toasts (`FW : …`, "Successfully loaded
-   unified autoloader"), so the only toast left is HyperHEN's own verdict.
+   unified autoloader"), so the only toast left is HyperHEN's own verdict,
+5. stages `assets/icon0.png` as the bundle's `icon0.png`,
+6. closes the app when the console is **already jailbroken**: instead of
+   re-sending the payload (elfldr on `:9021` is gone, which used to leave
+   YouTube stuck on the error screen showing the user agent), it shows
+   "Already Jailbroken" and terminates, exactly like a successful launch.
 
 ## Build
 

@@ -30,6 +30,7 @@ jobs:
           python3 tools/y2jb_bundle.py \
             --download0 download0 \
             --elf HyperHEN.elf \
+            --icon assets/icon0.png \
             --out build/download0
 
       - name: Create UFS2 download0.dat in FreeBSD
