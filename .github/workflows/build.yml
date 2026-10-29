@@ -1,0 +1,101 @@
+# Build download0.dat (UFS2) that boots HyperHEN instead of the Payload Manager.
+name: build-download0
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: build-download0-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Stage the bundle with HyperHEN
+        run: |
+          set -euo pipefail
+          test -f HyperHEN.elf
+          python3 tools/y2jb_bundle.py \
+            --download0 download0 \
+            --elf HyperHEN.elf \
+            --out build/download0
+
+      - name: Create UFS2 download0.dat in FreeBSD
+        uses: vmactions/freebsd-vm@v1
+        with:
+          release: "14.2"
+          copyback: true
+          run: |
+            set -e
+            # 336789504 bytes: the size the YouTube app expects for download0.dat.
+            truncate -s 336789504 download0.dat
+            MD=$(mdconfig -a -t vnode -f "$(pwd)/download0.dat")
+            newfs -O 2 -b 32768 -f 4096 /dev/${MD}
+            mount /dev/${MD} /mnt
+            cp -R build/download0/. /mnt/
+            chmod -R 777 /mnt/*
+            chmod 444 /mnt/cache/splash_screen/*/splash.html
+            # The image must carry the exact ELF committed here.
+            test "$(sha256 -q HyperHEN.elf)" = \
+              "$(sha256 -q /mnt/cache/splash_screen/*/HyperHEN.elf)"
+            umount /mnt
+            mdconfig -d -u ${MD}
+            [ "$(stat -f %z download0.dat)" -eq 336789504 ]
+
+      - name: Package image
+        run: |
+          set -euo pipefail
+          test "$(stat -c %s download0.dat)" -eq 336789504
+          python3 - <<'PY'
+          import zipfile
+          with zipfile.ZipFile("download0-HyperHEN.zip", "w", zipfile.ZIP_DEFLATED, compresslevel=9) as z:
+              z.write("download0.dat", "download0.dat")
+          PY
+          sha256sum download0-HyperHEN.zip HyperHEN.elf > SHA256SUMS
+          cat SHA256SUMS
+          ls -l download0-HyperHEN.zip
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: download0-HyperHEN
+          path: |
+            download0-HyperHEN.zip
+            SHA256SUMS
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Publish latest release
+        uses: ncipollo/release-action@v1
+        with:
+          token: ${{ github.token }}
+          tag: latest
+          name: HyperHEN Y2JB bundle
+          commit: ${{ github.sha }}
+          allowUpdates: true
+          replacesArtifacts: true
+          removeArtifacts: true
+          prerelease: false
+          makeLatest: true
+          artifacts: download0-HyperHEN.zip,SHA256SUMS
+          body: |
+            `download0.dat` (UFS2, 336 789 504 bytes) built from this repository:
+            the bundled Y2JB splash-screen loader streams **HyperHEN.elf** to
+            elfldr, so the console boots HyperHEN instead of the Payload Manager.
+
+            - Commit: `${{ github.sha }}`
+            - Flash: unzip, then FTP `download0.dat` to `/user/download/PPSA0165*/`
+            - Expect a single toast: "Welcome to HYL92" (success) or
+              "Retry to load HYL92" (failure).

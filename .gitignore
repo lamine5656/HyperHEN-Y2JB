@@ -1,0 +1,8 @@
+# Build outputs
+build/
+download0.dat
+*.zip
+
+# OS noise
+.DS_Store
+Thumbs.db
