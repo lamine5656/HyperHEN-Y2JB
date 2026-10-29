@@ -45,46 +45,30 @@ SCRIPT_ORDER = ("autoload.js", "main.js")
 # Stage-one artefacts that only exist to reach the Payload Manager.
 REPLACED_FILES = ("ps5-unified-autoloader.elf",)
 ALREADY_JB_MARK = "// hyperhen: already-jailbroken guard"
-ALREADY_JB_ANCHOR = """        log_phase = 'relapse';
-        await load_localscript('Relapse.js');
-        const relapse_success = await window.RELAPSE_PROMISE;
-        if (relapse_success) {
-            log_phase = 'autoload';
-            const autoload_sent = await send_autoload_payload();
-            log_phase = 'quiet';
-            if (autoload_sent) kill_youtube();
-        } else {
-            log_phase = 'quiet';
-        }
-"""
-ALREADY_JB_PATCH = """        // hyperhen: already-jailbroken guard
-        // Returning to the app on an already-jailbroken console used to fall
-        // through to send_autoload_payload(): elfldr on :9021 is gone, the
-        // failure path prints its error screen (with the user agent) and never
-        // calls kill_youtube(), so YouTube stayed open. Report the state and
-        // close the app exactly like a successful launch does.
-        let already_jailbroken = false;
-        if (typeof is_jailbroken === "function") {
-            try { already_jailbroken = is_jailbroken(); } catch (_) { }
-        }
-        if (already_jailbroken) {
-            log_phase = 'quiet';
-            send_notification("Already Jailbroken");
-            try { await new Promise(function (r) { setTimeout(r, 2500); }); } catch (_) { }
-            kill_youtube();
-            return;
-        }
-        log_phase = 'relapse';
-        await load_localscript('Relapse.js');
-        const relapse_success = await window.RELAPSE_PROMISE;
-        if (relapse_success) {
-            log_phase = 'autoload';
-            const autoload_sent = await send_autoload_payload();
-            log_phase = 'quiet';
-            if (autoload_sent) kill_youtube();
-        } else {
-            log_phase = 'quiet';
-        }
+# Only the entry of the exploit step is matched, so trailing whitespace or log
+# tweaks further down the block cannot break the patch.
+ALREADY_JB_RE = re.compile(
+    r"(?P<lede>[ \t]*)log_phase = 'relapse';\r?\n"
+    r"[ \t]*await load_localscript\('Relapse\.js'\);\r?\n"
+    r"[ \t]*const relapse_success = await window\.RELAPSE_PROMISE;"
+)
+ALREADY_JB_GUARD = """{indent}// hyperhen: already-jailbroken guard
+{indent}// Returning to the app on an already-jailbroken console used to fall
+{indent}// through to send_autoload_payload(): elfldr on :9021 is gone, the
+{indent}// failure path prints its error screen (user agent included) and never
+{indent}// reaches kill_youtube(), so YouTube stayed open. Report the state and
+{indent}// close the app exactly like a successful launch does.
+{indent}let already_jailbroken = false;
+{indent}if (typeof is_jailbroken === "function") {{
+{indent}    try {{ already_jailbroken = is_jailbroken(); }} catch (_) {{ }}
+{indent}}}
+{indent}if (already_jailbroken) {{
+{indent}    log_phase = 'quiet';
+{indent}    send_notification("Already Jailbroken");
+{indent}    try {{ await new Promise(function (r) {{ setTimeout(r, 2500); }}); }} catch (_) {{ }}
+{indent}    kill_youtube();
+{indent}    return;
+{indent}}}
 """
 TOAST_GUARD_MARK = "/* hyperhen: verdict only */"
 TOAST_GUARD = (
@@ -172,10 +156,13 @@ def patch_already_jailbroken(splash):
     text = read_text(main_js)
     if ALREADY_JB_MARK in text:
         return "already patched"
-    if ALREADY_JB_ANCHOR not in text:
+
+    match = ALREADY_JB_RE.search(text)
+    if not match:
         return "anchor not found (other loader generation), skipped"
 
-    write_text(main_js, text.replace(ALREADY_JB_ANCHOR, ALREADY_JB_PATCH, 1))
+    guard = ALREADY_JB_GUARD.format(indent=match.group("lede"))
+    write_text(main_js, text[: match.start()] + guard + text[match.start() :])
     return "notify + close on an already-jailbroken console"
 
 

